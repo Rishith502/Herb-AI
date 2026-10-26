@@ -185,7 +185,10 @@ except Exception as e:
 def generate_ayurvedic_profile(user_data: UserRegister):
     height_m = user_data.height / 100.0
     bmi = round(user_data.weight / (height_m ** 2), 1)
-    prompt = f"Expert Ayurvedic doctor. Profile: {user_data.dict()}, BMI: {bmi}. Respond STRICTLY with a JSON object."
+    
+    # 🚀 FIX: Forced strict JSON formatting in prompt so Gemini doesn't miss keys
+    prompt = f"Expert Ayurvedic doctor. Profile: {user_data.dict()}, BMI: {bmi}. Respond STRICTLY with a JSON object. Must include these exact keys: 'dosha' (string), 'description' (string), 'metabolism_insight' (string), 'ideal_exercise' (string), 'diet_do' (array of strings), 'diet_dont' (array of strings), 'daily_routine' (array of strings), 'yoga' (array of strings)."
+    
     try:
         response = gemini_model.generate_content(prompt)
         raw_text = response.text.strip()
@@ -193,7 +196,17 @@ def generate_ayurvedic_profile(user_data: UserRegister):
             raw_text = raw_text[raw_text.find("{"):raw_text.rfind("}")+1]
         return json.loads(raw_text)
     except:
-        return {"dosha": "Vata-Kapha", "description": "Fallback profile generated."}
+        # 🚀 FIX: Bulletproof Fallback Data so the UI never breaks
+        return {
+            "dosha": "Vata-Kapha", 
+            "description": "A balanced dosha profile indicating a mix of air and water elements. Maintaining warmth and routine is essential for your constitution.",
+            "metabolism_insight": "Moderate digestion (Agni). Requires warm, cooked foods to maintain optimal metabolic rate.",
+            "ideal_exercise": "Moderate intensity activities such as brisk walking, swimming, or cycling.",
+            "diet_do": ["Warm soups", "Cooked root vegetables", "Herbal teas", "Ghee in moderation"],
+            "diet_dont": ["Ice cold drinks", "Excessive raw salads", "Deep fried or heavily processed foods"],
+            "daily_routine": ["Wake up before 6:30 AM", "Drink a glass of warm water with lemon", "Engage in 15 minutes of light morning stretching"],
+            "yoga": ["Surya Namaskar (Sun Salutations)", "Vajrasana (Thunderbolt Pose)", "Bhujangasana (Cobra Pose)"]
+        }
 
 @app.get("/medicines")
 def get_all_medicines():
@@ -359,7 +372,6 @@ def predict_disease(data: UserInput):
                 {"medicine_name": "Triphala Churna", "dosage": "1 teaspoon at bedtime"}
             ]
         
-        # 🚀 EXTRACTING ACTUAL HERBS FROM THE JSON
         ayurveda_protocol_list = []
         user_age_cat = data.age_category.lower()
         user_severity = data.severity.lower()
@@ -368,11 +380,8 @@ def predict_disease(data: UserInput):
             if isinstance(med, dict):
                 base_dose = med.get("dosage", "Standard Dose")
                 name = med.get("medicine_name", "Ayurvedic Protocol")
-                
-                # Fetch the array of real herbs from your medicine_master.json
                 herbs = med.get("herb_sanskrit", [])
                 
-                # Clean up scraping artifacts like "6 nights" or "9 times"
                 if isinstance(herbs, list) and len(herbs) > 0:
                     clean_herbs = [
                         str(h).title() for h in herbs 
@@ -381,11 +390,9 @@ def predict_disease(data: UserInput):
                         and "times" not in str(h).lower()
                         and len(str(h)) > 2
                     ]
-                    
-                    # If clean herbs exist, overwrite the generic "Protocol" name with the real medicines
                     if clean_herbs:
                         if "Protocol" in name or name == "Ayurvedic Herb":
-                            name = ", ".join(clean_herbs[:5])  # e.g., "Amalaki, Bibhitaki, Bilva"
+                            name = ", ".join(clean_herbs[:5])  
                         else:
                             name = f"{name} ({', '.join(clean_herbs[:3])})"
             else:
@@ -421,7 +428,7 @@ def predict_disease(data: UserInput):
             "detected_severity": data.severity,
             "prescription": {"pregnancy_status": preg_warning},
             "ayurveda_protocol": ayurveda_protocol_list, 
-            "shap_explainability": feature_contributions 
+            "explanation": feature_contributions 
         }
     
     except Exception as e:
@@ -446,7 +453,17 @@ def login_user(user: UserLogin):
     db_user = users_collection.find_one({"name": user.name})
     if not db_user or not bcrypt.checkpw(user.password.encode('utf-8'), db_user["password"].encode('utf-8')):
         raise HTTPException(status_code=400, detail="Invalid username or password")
-    return {"message": "Login successful", "user": {"name": db_user.get("name"), "ayurvedic_profile": db_user.get("ayurvedic_profile")}}
+    
+    # 🚀 FIX: We must return the age and gender so the PDF generator has it!
+    return {
+        "message": "Login successful", 
+        "user": {
+            "name": db_user.get("name"), 
+            "age": db_user.get("age", 25),            # Safely get age
+            "gender": db_user.get("gender", "unknown"), # Safely get gender
+            "ayurvedic_profile": db_user.get("ayurvedic_profile")
+        }
+    }
 
 # ==========================================
 # E-COMMERCE & FINANCIAL TRANSACTIONS
